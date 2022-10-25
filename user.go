@@ -8,72 +8,58 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/caarlos0/httperr"
 )
 
-func (api *API) GetUser(
-	w http.ResponseWriter,
-	req *http.Request,
-) {
+func (api *API) GetUser(w http.ResponseWriter, req *http.Request) error {
 	id := req.URL.Query().Get("userId")
 	if id == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Errorf(http.StatusBadRequest, "")
 	}
 
-	rows, err := api.db.Query(fmt.Sprintf(
-		`SELECT id,name,email 
-		 FROM users 
-		 WHERE id = '%s' limit 1`,
-		id,
-	))
+	rows, err := api.db.Query(fmt.Sprintf(`SELECT id,name,email FROM users WHERE id = '%s' limit 1`, id))
 	if err != nil {
 		log.Print("Error: ", err)
-		w.WriteHeader(
-			http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	users, err := api.readUsers(rows)
 	if err != nil {
-		w.WriteHeader(
-			http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	if len(users) == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		return
+		return err
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set(
 		"Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users[0])
+	return json.NewEncoder(w).Encode(users[0])
 }
 
-func (api *API) Users(w http.ResponseWriter, req *http.Request) {
+func (api *API) Users(w http.ResponseWriter, req *http.Request) error {
 	switch req.Method {
 	case "GET":
-		api.GetUsers(w, req)
+		return api.GetUsers(w, req)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 }
 
-func (api *API) User(w http.ResponseWriter, req *http.Request) {
+func (api *API) User(w http.ResponseWriter, req *http.Request) error {
 	switch req.Method {
 	case "GET":
-		api.GetUser(w, req)
+		return api.GetUser(w, req)
 	case "POST":
-		api.UpdateUser(w, req)
+		return api.UpdateUser(w, req)
 	case "PUT":
-		api.CreateUser(w, req)
+		return api.CreateUser(w, req)
 	case "DELETE":
-		api.DeleteUser(w, req)
+		return api.DeleteUser(w, req)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 }
 
@@ -82,30 +68,27 @@ type User struct {
 	Name     string `json:"name" db:"Name"`
 	Email    string `json:"email" db:"Email"`
 	Password string `json:"password" db:"Password"`
-	Role     string `json:"role, omitempty" db:"Role"`
+	Role     string `json:"role,omitempty" db:"Role"`
 }
 
-func (api *API) GetUsers(w http.ResponseWriter, req *http.Request) {
+func (api *API) GetUsers(w http.ResponseWriter, req *http.Request) error {
 	if req.URL.Query().Get("isAdmin") != "1" {
-		w.WriteHeader(http.StatusForbidden)
-		return
+		return httperr.Errorf(http.StatusForbidden, "")
 	}
 
 	rows, err := api.db.Query("SELECT id,name,email FROM users")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	users, err := api.readUsers(rows)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+	return json.NewEncoder(w).Encode(users)
 }
 
 func (api *API) readUsers(rows *sql.Rows) ([]User, error) {
@@ -125,35 +108,26 @@ func (api *API) readUsers(rows *sql.Rows) ([]User, error) {
 	return users, nil
 }
 
-func (api *API) CreateUser(w http.ResponseWriter, req *http.Request) {
+func (api *API) CreateUser(w http.ResponseWriter, req *http.Request) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Errorf(http.StatusBadRequest, "")
 	}
 
 	defer req.Body.Close()
 
 	user := &User{}
 	if err := json.Unmarshal(body, user); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Wrap(err, http.StatusBadRequest)
 	}
 
 	if user.Name == "" || user.Email == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Wrap(err, http.StatusBadRequest)
 	}
 
-	id, err := NewUser(
-		api.db,
-		user.Name,
-		user.Email,
-		Hash(user.Password),
-	)
+	id, err := NewUser(api.db, user.Name, user.Email, Hash(user.Password))
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	// Update the user with the new id and clear the password
@@ -162,55 +136,46 @@ func (api *API) CreateUser(w http.ResponseWriter, req *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	return json.NewEncoder(w).Encode(user)
 }
 
-func (api *API) UpdateUser(w http.ResponseWriter, req *http.Request) {
+func (api *API) UpdateUser(w http.ResponseWriter, req *http.Request) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 
 	defer req.Body.Close()
 
 	user := &User{}
 	if err := json.Unmarshal(body, user); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Wrap(err, http.StatusMethodNotAllowed)
 	}
 
 	if user.ID == 0 || user.Name == "" || user.Email == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 
-	_, err = api.db.Exec(`
-		UPDATE users SET name = ?, email = ? WHERE id = ?
-	`,
-		user.Name, user.Email, user.ID)
+	_, err = api.db.Exec(` UPDATE users SET name = ?, email = ? WHERE id = ? `, user.Name, user.Email, user.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	return json.NewEncoder(w).Encode(user)
 }
 
-func (api *API) DeleteUser(w http.ResponseWriter, req *http.Request) {
+func (api *API) DeleteUser(w http.ResponseWriter, req *http.Request) error {
 	id := req.URL.Query().Get("userId")
 	if id == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Errorf(http.StatusBadRequest, "")
 	}
 
 	q := fmt.Sprintf("DELETE FROM users WHERE id = '%s'", id)
 	_, err := api.db.Exec(q)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	if _, err := strconv.Atoi(id); err != nil {
@@ -219,4 +184,5 @@ func (api *API) DeleteUser(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+	return nil
 }

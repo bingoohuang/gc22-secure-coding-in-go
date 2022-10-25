@@ -6,49 +6,37 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/caarlos0/httperr"
 	"github.com/jmoiron/sqlx"
 )
 
-func (api *API) GetFriends(
-	w http.ResponseWriter,
-	req *http.Request,
-) {
+func (api *API) GetFriends(w http.ResponseWriter, req *http.Request) error {
 	userID := req.URL.Query().Get("userId")
 
 	friends, err := GetFriends(userID)
 	if err != nil {
 		log.Fatal(err)
-		w.WriteHeader(
-			http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	data, err := json.Marshal(friends)
 	if err != nil {
 		log.Fatal(err)
-		w.WriteHeader(
-			http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	w.Write(data)
+	return nil
 }
 
 func GetFriends(userId string) ([]*User, error) {
-	q := fmt.Sprintf(`
-		SELECT users.*
-		FROM users
-		JOIN friends ON users.ID = friends.FriendId
-		WHERE friends.UserId = '%s';
-		`,
-		userId,
-	)
+	q := fmt.Sprintf(`SELECT users.* FROM users JOIN friends ON users.ID = friends.FriendId WHERE friends.UserId = '%s'; `, userId)
 
 	return Query[*User](q)
 }
 
 func Query[T any](query string) ([]T, error) {
-	dbx, err := sqlx.Open("sqlite3", db)
+	dbx, err := sqlx.Open("sqlite", db)
 	if err != nil {
 		return nil, err
 	}
@@ -62,28 +50,26 @@ func Query[T any](query string) ([]T, error) {
 	return results, nil
 }
 
-func (api *API) Friends(w http.ResponseWriter, req *http.Request) {
+func (api *API) Friends(w http.ResponseWriter, req *http.Request) error {
 	log.Print("Users")
 	switch req.Method {
 	case "GET":
-		api.GetFriends(w, req)
+		return api.GetFriends(w, req)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 }
 
-func (api *API) Friend(w http.ResponseWriter, req *http.Request) {
+func (api *API) Friend(w http.ResponseWriter, req *http.Request) error {
 	switch req.Method {
 	case "PUT":
-		api.AddFriend(w, req)
+		return api.AddFriend(w, req)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 }
 
-func (api *API) AddFriend(w http.ResponseWriter, req *http.Request) {
+func (api *API) AddFriend(w http.ResponseWriter, req *http.Request) error {
 	userID := req.URL.Query().Get("userId")
 	friendID := req.URL.Query().Get("friendId")
 
@@ -91,7 +77,6 @@ func (api *API) AddFriend(w http.ResponseWriter, req *http.Request) {
 	err := AddFriend(api.db, userID, friendID)
 	if err != nil {
 		log.Fatal(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
+	return err
 }

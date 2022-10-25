@@ -11,16 +11,16 @@ import (
 	"os"
 	"time"
 
+	"github.com/caarlos0/httperr"
 	"golang.org/x/crypto/argon2"
 )
 
-func (api *API) Login(w http.ResponseWriter, req *http.Request) {
+func (api *API) Login(w http.ResponseWriter, req *http.Request) error {
 	switch req.Method {
 	case "POST":
-		api.LoginUser(w, req)
+		return api.LoginUser(w, req)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+		return httperr.Errorf(http.StatusMethodNotAllowed, "")
 	}
 }
 
@@ -39,37 +39,32 @@ func (api *API) Login(w http.ResponseWriter, req *http.Request) {
 	    "password": "doesn't matter"
 	}
 */
-func (api *API) LoginUser(w http.ResponseWriter, req *http.Request) {
+func (api *API) LoginUser(w http.ResponseWriter, req *http.Request) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Wrap(err, http.StatusBadRequest)
 	}
 
 	defer req.Body.Close()
 
 	user := &User{}
 	if err := json.Unmarshal(body, user); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return httperr.Wrap(err, http.StatusBadRequest)
 	}
 
 	log.Printf("Logging in user [%s]", user.Email)
 	user, err = GetUser(api.db, user.Email, Hash(user.Password))
 	if err != nil {
-		log.Print(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return httperr.Wrap(err, http.StatusInternalServerError)
 	}
 
 	data, err := json.Marshal(user)
 	if err != nil {
-		log.Print(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return httperr.Wrap(err, http.StatusInternalServerError)
 	}
 
 	w.Write(data)
+	return nil
 }
 
 func Hash(data string) string {

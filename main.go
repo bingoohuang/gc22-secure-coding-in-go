@@ -8,10 +8,9 @@ import (
 	"os"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/caarlos0/httperr"
+	_ "modernc.org/sqlite"
 )
-
-const prefix = "html"
 
 type API struct {
 	db       *sql.DB
@@ -28,26 +27,25 @@ func main() {
 	api := &API{}
 
 	var err error
-	api.db, err = InitDB()
-	if err != nil {
+	if api.db, err = InitDB(); err != nil {
 		log.Fatal(err)
 	}
 
 	router := http.NewServeMux()
 
 	// Auth
-	router.Handle("/login", http.HandlerFunc(api.Login))
+	router.Handle("/login", httperr.NewF(api.Login))
 
 	// Users
-	router.Handle("/user", http.HandlerFunc(api.User))
-	router.Handle("/users", http.HandlerFunc(api.Users))
-	router.Handle("/friend", http.HandlerFunc(api.Friend))
-	router.Handle("/friends", http.HandlerFunc(api.Friends))
+	router.Handle("/user", httperr.NewF(api.User))
+	router.Handle("/users", httperr.NewF(api.Users))
+	router.Handle("/friend", httperr.NewF(api.Friend))
+	router.Handle("/friends", httperr.NewF(api.Friends))
 
 	// Images
-	router.Handle("/images", http.HandlerFunc(api.Pictures))
-	router.Handle("/imgs/", http.HandlerFunc(api.Image))
-	router.Handle("/upload", http.HandlerFunc(api.Upload))
+	router.Handle("/images", httperr.NewF(api.Pictures))
+	router.Handle("/imgs/", httperr.NewF(api.Image))
+	router.Handle("/upload", httperr.NewF(api.Upload))
 
 	log.Printf("Listening on port 8081")
 	log.Fatal(http.ListenAndServe("127.0.0.1:8081", router))

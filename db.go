@@ -23,7 +23,7 @@ const friends = `
   );`
 
 func InitDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", db)
+	db, err := sql.Open("sqlite", db)
 	if err != nil {
 		return nil, err
 	}
@@ -39,17 +39,8 @@ func InitDB() (*sql.DB, error) {
 	return db, nil
 }
 
-func NewUser(
-	db *sql.DB,
-	name,
-	email,
-	password string,
-) (int, error) {
-	createUser := fmt.Sprintf(
-		`INSERT INTO users VALUES(NULL,'%s','%s','%s');`,
-		name, email, password,
-	)
-
+func NewUser(db *sql.DB, name, email, password string) (int, error) {
+	createUser := fmt.Sprintf(`INSERT INTO users VALUES(NULL,'%s','%s','%s');`, name, email, password)
 	log.Println(createUser)
 
 	res, err := db.Exec(createUser)
@@ -67,20 +58,12 @@ func NewUser(
 func GetUser(db *sql.DB, email, password string) (*User, error) {
 	log.Printf("Getting user [%s] from database", email)
 
-	q := fmt.Sprintf(`
-		SELECT * 
-		FROM users 
-		WHERE Email='%s' AND Password = '%s'
-		LIMIT 1;`,
-		email,
-		password,
-	)
-
-	fmt.Println(q)
+	q := fmt.Sprintf(` SELECT * FROM users WHERE Email='%s' AND Password = '%s' LIMIT 1;`, email, password)
+	log.Print(q)
 
 	row := db.QueryRow(q)
 	if row == nil {
-		return nil, fmt.Errorf("User not found")
+		return nil, fmt.Errorf("user not found")
 	}
 
 	var user User
@@ -93,11 +76,7 @@ func GetUser(db *sql.DB, email, password string) (*User, error) {
 }
 
 func AddFriend(db *sql.DB, userId, friendId string) error {
-	log.Printf(
-		"Adding friend [%s] to database for user [%s]",
-		friendId,
-		userId,
-	)
+	log.Printf("Adding friend [%s] to database for user [%s]", friendId, userId)
 
 	_, err := db.Exec(`INSERT INTO friends VALUES(?,?);`, userId, friendId)
 	return err
